@@ -6,6 +6,10 @@ import {
 import { AlarmFactory, CustomAlarmThreshold } from "../../alarm";
 import { MetricWithAlarmSupport } from "../../metric";
 
+export interface DataFreshnessThreshold extends CustomAlarmThreshold {
+  readonly ageOfRecordThreshold: number;
+}
+
 export interface MaxIteratorAgeThreshold extends CustomAlarmThreshold {
   readonly maxAgeInMillis: number;
 }
@@ -43,6 +47,26 @@ export class KinesisAlarmFactory {
       alarmDescription: `Iterator Max Age is too high.`,
       // we will dedupe any kind of message count issue to the same ticket
       alarmDedupeStringSuffix: "AnyDataStreamIteratorMaxAge",
+    });
+  }
+
+  addOldAgeOfRecordAlarm(
+    metric: MetricWithAlarmSupport,
+    props: DataFreshnessThreshold,
+    disambiguator?: string
+  ) {
+    return this.alarmFactory.addAlarm(metric, {
+      treatMissingData:
+        props.treatMissingDataOverride ?? TreatMissingData.MISSING,
+      comparisonOperator:
+        props.comparisonOperatorOverride ??
+        ComparisonOperator.GREATER_THAN_THRESHOLD,
+      ...props,
+      disambiguator,
+      threshold: props.ageOfRecordThreshold,
+      alarmNameSuffix: "Record-Max-Age",
+      alarmDescription: `Max Age of Record in firehose is too high.`,
+      alarmDedupeStringSuffix: "MaxAgeOfRecordExceededInDeliveryStream",
     });
   }
 

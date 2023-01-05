@@ -7,6 +7,7 @@ import {
 import {
   BaseMonitoringProps,
   CountAxisFromZero,
+  DataFreshnessThreshold,
   DefaultGraphWidgetHeight,
   DefaultSummaryWidgetHeight,
   HalfWidth,
@@ -14,10 +15,11 @@ import {
   MetricWithAlarmSupport,
   Monitoring,
   MonitoringScope,
-  QuarterWidth,
   RateAxisFromZero,
   RecordsThrottledThreshold,
+  SixthWidth,
   TimeAxisMillisFromZero,
+  TimeAxisSecondsFromZero,
 } from "../../common";
 import {
   MonitoringHeaderWidget,
@@ -29,6 +31,7 @@ import {
 } from "./KinesisFirehoseMetricFactory";
 
 export interface KinesisFirehoseMonitoringOptions extends BaseMonitoringProps {
+  readonly addDeliveryFreshnessAlarm?: Record<string, DataFreshnessThreshold>;
   readonly addRecordsThrottledAlarm?: Record<string, RecordsThrottledThreshold>;
 }
 
@@ -42,6 +45,7 @@ export class KinesisFirehoseMonitoring extends Monitoring {
 
   readonly kinesisAlarmFactory: KinesisAlarmFactory;
   readonly recordCountAnnotations: HorizontalAnnotation[];
+  readonly ageAnnotations: HorizontalAnnotation[];
 
   readonly incomingBytesMetric: MetricWithAlarmSupport;
   readonly incomingRecordsMetric: MetricWithAlarmSupport;
@@ -53,6 +57,8 @@ export class KinesisFirehoseMonitoring extends Monitoring {
   readonly incomingBytesToLimitRate: MetricWithAlarmSupport;
   readonly incomingRecordsToLimitRate: MetricWithAlarmSupport;
   readonly incomingPutRequestsToLimitRate: MetricWithAlarmSupport;
+  readonly maxAgeofRecordsMetric: MetricWithAlarmSupport;
+  readonly deliveredRecordsMetric: MetricWithAlarmSupport;
 
   constructor(scope: MonitoringScope, props: KinesisFirehoseMonitoringProps) {
     super(scope);
@@ -75,6 +81,7 @@ export class KinesisFirehoseMonitoring extends Monitoring {
     );
     this.kinesisAlarmFactory = new KinesisAlarmFactory(alarmFactory);
     this.recordCountAnnotations = [];
+    this.ageAnnotations = [];
 
     this.incomingBytesMetric = metricFactory.metricIncomingBytes();
     this.incomingRecordsMetric = metricFactory.metricIncomingRecordCount();
@@ -91,6 +98,8 @@ export class KinesisFirehoseMonitoring extends Monitoring {
       metricFactory.metricIncomingRecordsToLimitRate();
     this.incomingPutRequestsToLimitRate =
       metricFactory.metricIncomingPutRequestsToLimitRate();
+    this.deliveredRecordsMetric = metricFactory.metricDeliveredRecordCount();
+    this.maxAgeofRecordsMetric = metricFactory.metricDataFreshness();
 
     for (const disambiguator in props.addRecordsThrottledAlarm) {
       const alarmProps = props.addRecordsThrottledAlarm[disambiguator];
@@ -100,6 +109,17 @@ export class KinesisFirehoseMonitoring extends Monitoring {
         disambiguator
       );
       this.recordCountAnnotations.push(createdAlarm.annotation);
+      this.addAlarm(createdAlarm);
+    }
+
+    for (const disambiguator in props.addDeliveryFreshnessAlarm) {
+      const alarmProps = props.addDeliveryFreshnessAlarm[disambiguator];
+      const createdAlarm = this.kinesisAlarmFactory.addOldAgeOfRecordAlarm(
+        this.maxAgeofRecordsMetric,
+        alarmProps,
+        disambiguator
+      );
+      this.ageAnnotations.push(createdAlarm.annotation);
       this.addAlarm(createdAlarm);
     }
 
@@ -117,10 +137,11 @@ export class KinesisFirehoseMonitoring extends Monitoring {
   widgets(): IWidget[] {
     return [
       this.createTitleWidget(),
-      this.createIncomingRecordWidget(QuarterWidth, DefaultGraphWidgetHeight),
-      this.createLatencyWidget(QuarterWidth, DefaultGraphWidgetHeight),
-      this.createConversionWidget(QuarterWidth, DefaultGraphWidgetHeight),
-      this.createLimitWidget(QuarterWidth, DefaultGraphWidgetHeight),
+      this.createIncomingRecordWidget(SixthWidth, DefaultGraphWidgetHeight),
+      this.createDeliveredRecordWidget(SixthWidth, DefaultGraphWidgetHeight),
+      this.createLatencyWidget(SixthWidth, DefaultGraphWidgetHeight),
+      this.createConversionWidget(SixthWidth, DefaultGraphWidgetHeight),
+      this.createLimitWidget(SixthWidth, DefaultGraphWidgetHeight),
     ];
   }
 
@@ -138,6 +159,17 @@ export class KinesisFirehoseMonitoring extends Monitoring {
       height,
       title: "Records",
       left: [this.incomingRecordsMetric, this.throttledRecordsMetric],
+      leftYAxis: CountAxisFromZero,
+      leftAnnotations: this.recordCountAnnotations,
+    });
+  }
+
+  createDeliveredRecordWidget(width: number, height: number) {
+    return new GraphWidget({
+      width,
+      height,
+      title: "Records",
+      left: [this.deliveredRecordsMetric],
       leftYAxis: CountAxisFromZero,
       leftAnnotations: this.recordCountAnnotations,
     });
@@ -175,6 +207,17 @@ export class KinesisFirehoseMonitoring extends Monitoring {
       ],
       leftYAxis: RateAxisFromZero,
       leftAnnotations: [{ value: 1, label: "100% usage" }],
+    });
+  }
+
+  createRecordFreshnessWidget(width: number, height: number) {
+    return new GraphWidget({
+      width,
+      height,
+      title: "Data Freshness",
+      left: [this.maxAgeofRecordsMetric],
+      leftYAxis: TimeAxisSecondsFromZero,
+      leftAnnotations: this.ageAnnotations,
     });
   }
 }

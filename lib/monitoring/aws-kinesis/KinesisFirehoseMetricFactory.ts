@@ -178,4 +178,26 @@ export class KinesisFirehoseMetricFactory {
       FirehoseNamespace
     );
   }
+
+  metricDataFreshness() {
+    return this.metricFactory.createMetric(
+      "DeliveryToS3.DataFreshness",
+      MetricStatistic.MAX,
+      "Age",
+      this.dimensionsMap,
+      undefined,
+      FirehoseNamespace
+    );
+  }
+
+  metricDeliveredRecordCount() {
+    return this.metricFactory.createMetric(
+      "DeliveryToS3.Records",
+      MetricStatistic.SUM,
+      "Outgoing",
+      this.dimensionsMap,
+      undefined,
+      FirehoseNamespace
+    );
+  }
 }
